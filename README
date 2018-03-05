@@ -1,0 +1,103 @@
+.___________. _______ .___  ___.      ___          __  
+|           ||   ____||   \/   |     /   \        /_ | 
+`---|  |----`|  |__   |  \  /  |    /  ^  \        | | 
+    |  |     |   __|  |  |\/|  |   /  /_\  \       | | 
+    |  |     |  |____ |  |  |  |  /  _____  \      | | 
+    |__|     |_______||__|  |__| /__/     \__\     |_| 
+
+Nume:    Maftei Stefan - Radu
+Grupa:   336CC
+Materie: APD
+
+
+
+=== Implementarea ===
+
+	Pentru implementarea temei am modificat structura unui sarpe, adaugandu-i
+coordonatele cozii vechi (inainte de a fi mutata), index pe mapa care retine
+faptul ca mutarea s-a efectuat in urma unei coliziuni si doi pointeri
+reprezentand head-ul si tail-ul unei liste dublu lantuite. Lista dublu
+inlantuita are rolul de a retine intregul sarpe (coordonatele celulelor din
+matrice), iar adaugarea/stergere la inceputul si sfarsitul listei se realizeaza
+in O(1).
+	Ideea algoritmului ales de mine consta in aflarea listei componente pentru
+fiecare sarpe. Astfel voi avea capul si coada sarpelui ca fiind capul si coada
+listei fiecarui sarpe. Cat timp nu e o coliziune si mai sunt runde de efectuat,
+sterg coada din matricea world ca sa nu fie detectata coliziunea pentru fiecare
+sarpe in parte. Apoi calculez noua mutare a fiecarui sarpe si verific pe
+matrice daca acel loc este gol (in acest caz efectuez mutarea), altfel
+identific coliziunea fara a efectua mutarea.
+	Daca nu a avut loc o coliziune, matricea ramane neschimbata in urma
+mutarilor, altfel refac matricea aducand totul la runda anterioara (ce
+a fost modificat refac la loc, inclusiv coada pe care am sters-o la inceputul
+rundei).
+	Paralelizarea acestui algoritm aflat in functia principala run_simulation()
+aduce cateva elemente de sincronizare in anumite puncte cheie din algoritmul
+prezentat. Astfel voi avea o matrice de lock-uri cu scopul blocarii unei celule
+din matrice pentru a nu fi scrisa/citita simultan de doi serpi aflati in fire
+de executie diferite.
+	Apoi se creeaza in paralel listele fiecarui sarpe, pe thread-uri diferite.
+In cadrul rundei se taie cozile tot in paralel. Pentru executarea rundei
+calculez in paralel mutarea fiecarui sarpe, setez un lock pe celula respectiva
+pentru a nu fi citita de alt sarpe, execut mutarea sau aflu coliziunea, inchid
+lock-ul si se continua algoritmul. In caz de coliziune refac in paralel
+matricea pentru ca fiecare sarpe are informatia cu ce trebuie reconstruit in
+matricea world. La final se distrug lock-urile.
+
+Mentiuni:
+	- coada se taie la inceputul rundei doar ca valoare in matrice, ea este
+eliminata efectiv din coada dupa ce s-a calculat mutarea sarpelui;
+	- si la mutare si la coliziune se insereaza ca si cap mutarea efectiva,
+pentru ca, in caz de coliziune, la refacerea matricei se elimina capul pus la
+toate listele serpilor, aflandu-se apoi capul vechi;
+	- lista implementata contine toate celulele sarpelui respectiv, fiind utila
+la tranzitia dintre runde, pentru ca se va cunoaste noua coada, coada veche
+fiind eliminata in cadrul rundei;
+	- pentru ca o coliziune sa fie vazuta de toate thread-urile la finalul
+rundei am utilizat reduction(*:collsion), unde daca collision e zero atunci
+s-a identificat o coliziune pentru un sarpe iar acest raspuns e propagat din
+cauza inmultirii (initial collision = 1, iar la coliziune collision = 0).
+
+
+
+=== Testarea ===
+
+	Testarea am efectuat-o pe coada ibm-nehalem.q de pe fep.grid.pub.ro.
+Am creat 2 script-uri pentru a testa input-urile mici, respectiv input-ul
+mare. Ambele script-uri contin 4 rulari ale executabilului urmate fiecare
+de functia diff pentru a compara output-ul (cele 4 rulari sunt efectuate pe 
+1, 2, 4, 6 si 8 core-uri in cadrul aceluiasi script => 5 * 4 = 20 rulari).
+	Dupa rularea testarii input-ului mare pe coada mentionata, am obtinut
+urmatorii timpi:
+
++-----------------+-------------+---------------+
+| Nr. de core-uri | Timpii (s)  | Media (s)     |
++-------------------------------+---------------+
+|                 | 7.863568848 |               |
+|        1        | 7.909538235 | 7.86455194925 |
+|                 | 7.922501043 |               |
+|                 | 7.762599671 |               |
++-----------------+-------------+---------------+
+|                 | 5.355475854 |               |
+|        2        | 5.366559867 | 5.47018351675 |
+|                 | 5.884477864 |               |
+|                 | 5.274220482 |               |
++-----------------+-------------+---------------+
+|                 | 4.351786396 |               |
+|        4        | 4.401069495 | 4.3699717535  |
+|                 | 4.381031986 |               |
+|                 | 4.345999137 |               |
++-----------------+-------------+---------------+
+|                 | 3.105010212 |               |
+|        6        | 3.066578867 | 3.097904693   |
+|                 | 3.078286156 |               |
+|                 | 3.141743537 |               |
++-----------------+-------------+---------------+
+|                 | 2.509979727 |               |
+|        8        | 2.496990536 | 2.49387069575 |
+|                 | 2.509809314 |               |
+|                 | 2.458703206 |               |
++-----------------+-------------+---------------+
+
+	In urma rezultatelor obtinute este demonstrata scalabilitatea algoritmului
+implementat.
